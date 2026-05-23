@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="de">
-<head> 
+<head>
 <meta charset="utf-8">
 <title>Outfit Board</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
@@ -22,14 +22,19 @@
     margin:0; padding:0;
     height:100vh; height:100dvh; width:100%;
     background:var(--red);
-    overscroll-behavior:none;
+    overscroll-behavior:none; overflow:hidden;
   }
 
-  /* Selected HTML, full screen (dvh fills the whole screen incl. bottom safe area on iOS) */
-  #viewer{
+  /* Fixed full-viewport stage: a non-replaced div with inset:0 reliably
+     fills the whole screen on iOS (unlike a bare iframe). White so no red shows. */
+  #stage{
     position:fixed; top:0; left:0; right:0; bottom:0;
-    width:100%; height:100vh; height:100dvh;
-    border:0; margin:0; padding:0; background:#fff; display:none;
+    background:#fff; display:none;
+  }
+  /* The iframe simply fills the stage 100% */
+  #viewer{
+    width:100%; height:100%;
+    border:0; margin:0; padding:0; display:block; background:#fff;
   }
 
   /* Empty state: red screen, centered white upload circle */
@@ -80,7 +85,7 @@
 </head>
 <body>
 
-  <iframe id="viewer" referrerpolicy="no-referrer"></iframe>
+  <div id="stage"><iframe id="viewer" referrerpolicy="no-referrer"></iframe></div>
 
   <!-- Empty state -->
   <div id="welcome">
@@ -113,6 +118,7 @@
   var PULL_MAX = 160;
 
   var viewer   = document.getElementById("viewer");
+  var stage    = document.getElementById("stage");
   var welcome  = document.getElementById("welcome");
   var bar      = document.getElementById("bar");
   var pull     = document.getElementById("pull");
@@ -133,7 +139,7 @@
   // ---------- Display ----------
   function showContent(html){
     welcome.style.display = "none";
-    viewer.style.display  = "block";
+    stage.style.display   = "block";
     viewer.srcdoc = html; // same-origin -> we can attach the pull gesture inside
   }
 
@@ -221,7 +227,7 @@
   // ---------- Start ----------
   var saved = loadSaved();
   if(saved.html){ showContent(saved.html); }
-  else{ welcome.style.display = "flex"; viewer.style.display = "none"; }
+  else{ welcome.style.display = "flex"; stage.style.display = "none"; }
 
 })();
 </script>
