@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="de">
-<head> 
+<head>
 <meta charset="utf-8">
 <title>Outfit Board</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
@@ -20,16 +20,17 @@
   *{ box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
   html,body{
     margin:0; padding:0;
-    height:100vh; height:100dvh; width:100%;
-    background:var(--red);
+    height:100vh; width:100%;
+    background:#fff;            /* white base -> no red can ever leak behind content */
     overscroll-behavior:none; overflow:hidden;
   }
 
-  /* Fixed full-viewport stage: a non-replaced div with inset:0 reliably
-     fills the whole screen on iOS (unlike a bare iframe). White so no red shows. */
+  /* Fixed full-viewport stage. Exact height is forced in JS to the largest
+     reported height (incl. screen.height) so the bottom is always covered. */
   #stage{
     position:fixed; top:0; left:0; right:0; bottom:0;
-    background:#fff; display:none;
+    height:100vh; min-height:100vh;
+    background:#fff; display:none; overflow:hidden;
   }
   /* The iframe simply fills the stage 100% */
   #viewer{
@@ -40,7 +41,7 @@
   /* Empty state: red screen, centered white upload circle */
   #welcome{
     position:fixed; top:0; left:0; right:0; bottom:0;
-    height:100vh; height:100dvh;
+    height:100vh; min-height:100vh;
     display:flex; align-items:center; justify-content:center;
     background:var(--red);
   }
@@ -74,7 +75,7 @@
   #bar{
     position:fixed; left:0; right:0; top:0;
     padding-top:calc(var(--safe-top) + 10px); padding-bottom:10px;
-    display:flex; justify-content:center;
+    display:flex; justify-content:center; gap:16px;
     transform:translateY(-130%);
     transition:transform .28s cubic-bezier(.22,.61,.36,1);
     z-index:60; pointer-events:none;
@@ -99,10 +100,13 @@
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M5 16v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2"/></svg>
   </div></div>
 
-  <!-- Top bar after long pull -->
+  <!-- Top bar after long pull: upload + refresh -->
   <div id="bar">
     <button class="circle small" id="pickBar" aria-label="Datei hochladen">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M5 16v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2"/></svg>
+    </button>
+    <button class="circle small" id="refreshBar" aria-label="Aktualisieren">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v5h-5"/></svg>
     </button>
   </div>
 
@@ -136,18 +140,54 @@
     catch(e){ return { html:null }; }
   }
 
+  // ---------- Force the stage AND the iframe to an exact pixel height ----------
+  // iOS often ignores height:100% on an <iframe> (replaced element), which leaves
+  // a strip at the bottom. So we set an explicit px height on both, using the
+  // largest height the browser reports (avoids under-sizing on first paint).
+  function fitStage(){
+    // Take the LARGEST height the device reports, including the physical screen
+    // height. iOS innerHeight/visualViewport return only the *visible* area and
+    // leave the bottom (toolbar / safe-area) uncovered -> over-cover instead.
+    var h = Math.max(
+      window.innerHeight || 0,
+      (document.documentElement && document.documentElement.clientHeight) || 0,
+      (window.visualViewport && window.visualViewport.height) || 0,
+      (window.screen && window.screen.height) || 0
+    );
+    h = Math.round(h);
+    if(!h){ return; }
+    stage.style.height   = h + "px";
+    viewer.style.height  = h + "px";   // explicit px height on the iframe itself
+    welcome.style.height = h + "px";
+  }
+  window.addEventListener("resize", fitStage);
+  window.addEventListener("orientationchange", function(){ setTimeout(fitStage, 200); });
+  window.addEventListener("load", function(){ fitStage(); setTimeout(fitStage, 300); });
+  if(window.visualViewport){
+    window.visualViewport.addEventListener("resize", fitStage);
+    window.visualViewport.addEventListener("scroll", fitStage);
+  }
+
   // ---------- Display ----------
   function showContent(html){
     welcome.style.display = "none";
     stage.style.display   = "block";
+    fitStage();
     viewer.srcdoc = html; // same-origin -> we can attach the pull gesture inside
+  }
+
+  // Reload the currently selected file (re-render its stored content).
+  function refreshContent(){
+    var s = loadSaved();
+    if(s.html){ viewer.srcdoc = s.html; }
+    hideBar();
   }
 
   // ---------- Toolbar ----------
   function showBar(){
     bar.classList.add("show");
     clearTimeout(barTimer);
-    barTimer = setTimeout(hideBar, 6000);
+    barTimer = setTimeout(hideBar, 2000); // hide quickly when nothing is done
   }
   function hideBar(){ bar.classList.remove("show"); clearTimeout(barTimer); }
 
@@ -161,6 +201,7 @@
 
   // ---------- Pull gesture inside the iframe ----------
   function attachGesture(){
+    fitStage(); // re-measure once the embedded page has loaded
     var doc, win;
     try{ doc = viewer.contentDocument; win = viewer.contentWindow; }
     catch(e){ doc = null; }
@@ -223,8 +264,10 @@
 
   document.getElementById("pickWelcome").addEventListener("click", openPicker);
   document.getElementById("pickBar").addEventListener("click", openPicker);
+  document.getElementById("refreshBar").addEventListener("click", refreshContent);
 
   // ---------- Start ----------
+  fitStage();
   var saved = loadSaved();
   if(saved.html){ showContent(saved.html); }
   else{ welcome.style.display = "flex"; stage.style.display = "none"; }
